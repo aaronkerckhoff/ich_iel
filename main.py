@@ -30,3 +30,21 @@ class RequestHandler:
         headers = headers if headers else {}
         headers['User-Agent'] = useragent
         return requests.post(f'{self.url}{path}', params=params, headers=headers, data=data)
+
+
+class Scraper:
+    BASE_URL = 'https://www.reddit.com/r/ich_iel'
+    REQUEST_HANDLER = RequestHandler(BASE_URL)
+
+    def get_post(self):
+        url = '/top.json?limit=1'
+        response = self.REQUEST_HANDLER.get(url)
+        data = json.loads(response.text)
+        post = data['data']['children'][0]['data']
+        title = post['title']
+        url = f'https://www.reddit.com/r/ich_iel/comments/{post["id"]}'
+        image_url = post['url']
+        author = post['author']
+        date = datetime.fromtimestamp(post['created_utc'])
+
+        return Post(title, url, image_url, author, date)
