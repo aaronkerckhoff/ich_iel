@@ -1,17 +1,17 @@
 import random
 from pprint import pprint
-
 import requests
 import json
 from datetime import datetime
 
 
 class Post:
-    def __init__(self, title: str, url: str, image_url: str, author: str, date: datetime):
+    def __init__(self, title: str, url: str, image_url: str, author: str, nsfw: bool, date: datetime):
         self.title = title
         self.url = url
         self.image_url = image_url
         self.author = author
+        self.nsfw = nsfw
         self.date = date
 
 
@@ -45,6 +45,7 @@ class Scraper:
         url = f'https://www.reddit.com/r/ich_iel/comments/{post["id"]}'
         image_url = post['url']
         author = post['author']
+        nsfw = post['over_18']
         date = datetime.fromtimestamp(post['created_utc'])
 
-        return Post(title, url, image_url, author, date)
+        return Post(title, url, image_url, author, nsfw, date)
