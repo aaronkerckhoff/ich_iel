@@ -21,7 +21,7 @@ class RequestHandler:
     def __init__(self, url: str):
         self.url = url
 
-    def get(self, path: str="", params: dict=None, headers: dict=None, useragent=USER_AGENT):
+    def get(self, path: str = "", params: dict = None, headers: dict = None, useragent=USER_AGENT):
         headers = headers if headers else {}
         headers['User-Agent'] = useragent
         return requests.get(f'{self.url}{path}', params=params, headers=headers)
