@@ -1,13 +1,12 @@
-import random
-from pprint import pprint
 import requests
 import json
 from datetime import datetime
 
 
 class Post:
-    def __init__(self, title: str, url: str, image_url: str, author: str, nsfw: bool, date: datetime):
+    def __init__(self, title: str, id: str, url: str, image_url: str, author: str, nsfw: bool, date: datetime):
         self.title = title
+        self.id = id
         self.url = url
         self.image_url = image_url
         self.author = author
@@ -21,12 +20,12 @@ class RequestHandler:
     def __init__(self, url: str):
         self.url = url
 
-    def get(self, path: str = "", params: dict = None, headers: dict = None, useragent=USER_AGENT):
+    def get(self, path: str = "", params: dict = None, headers: dict = None, useragent: dict = USER_AGENT):
         headers = headers if headers else {}
         headers['User-Agent'] = useragent
         return requests.get(f'{self.url}{path}', params=params, headers=headers)
 
-    def post(self, path: str, params: dict, headers: dict, data: dict, useragent=USER_AGENT):
+    def post(self, path: str, params: dict, headers: dict, data: dict, useragent: dict = USER_AGENT):
         headers = headers if headers else {}
         headers['User-Agent'] = useragent
         return requests.post(f'{self.url}{path}', params=params, headers=headers, data=data)
@@ -42,10 +41,11 @@ class Scraper:
         data = json.loads(response.text)
         post = data['data']['children'][0]['data']
         title = post['title']
-        url = f'https://www.reddit.com/r/ich_iel/comments/{post["id"]}'
+        id = post['id']
+        url = f'{self.BASE_URL}/comments/{id}'
         image_url = post['url']
         author = post['author']
         nsfw = post['over_18']
         date = datetime.fromtimestamp(post['created_utc'])
 
-        return Post(title, url, image_url, author, nsfw, date)
+        return Post(title, id, url, image_url, author, nsfw, date)
