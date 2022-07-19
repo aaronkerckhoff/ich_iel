@@ -1,5 +1,4 @@
-import os
-
+import base64
 import requests
 import json
 from datetime import datetime
@@ -41,22 +40,29 @@ class Post:
 
     # Optimizes the image by resizing it to the correct aspect ratio
     def change_image_size(self, size: tuple):
-        # Create folder '/images' if it doesn't exist
-        if not os.path.exists('images'):
-            os.makedirs('images')
-        # Download the image to the folder '/images'
-        filetype = self.image_url.split('.')[-1]
-        with open('images/' + self.id + '.' + filetype, 'wb') as f:
-            f.write(requests.get(self.image_url).content)
-
-        # Change the aspect ratio
-        old_image = Image.open('images/' + self.id + '.' + filetype)
-        old_size = old_image.size
+        image = Image.open(BytesIO(requests.get(self.image_url).content))
 
         new_image = Image.new('RGB', (round(size[0]), round(size[1])), (255, 255, 255))  # Create a new white image with the correct size
-        new_image.paste(old_image, (round((size[0] - old_size[0]) / 2), round((size[1] - old_size[1]) / 2)))  # Paste the old image in the center of the new image
-        new_image.save('images/' + self.id + '.' + filetype)  # Save the new image
-        print(new_image.size[0] / new_image.size[1])
+        new_image.paste(image, (round((size[0] - self.image_size[0]) / 2), round((size[1] - self.image_size[1]) / 2)))  # Paste the old image in the center of the new image
+
+        # Upload the image to Imgur and get the link
+        filetype = self.image_url.split('.')[-1]
+        filetype = filetype.replace('jpg', 'jpeg')  # Imgur doesn't accept jpg
+
+        image_bytes = BytesIO()
+        new_image.save(image_bytes, format=filetype)
+        image_bytes.getvalue()
+
+        url = 'https://api.imgur.com/3/image'
+        with open('imgur', 'r') as file:
+            imgur_client_id = file.read()
+
+        headers = {'Authorization': 'Client-ID ' + imgur_client_id}
+        payload = {'image': base64.b64encode(image_bytes.getvalue()).decode('utf-8')}
+        response = requests.post(url, headers=headers, data=payload)
+
+        # Get the link of the optimized image
+        self.image_url = json.loads(response.text)['data']['link']
 
     # Calculates the needed size of the image given the aspect ratio
     def calculate_size(self, aspect_ratio: float):
