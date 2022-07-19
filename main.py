@@ -7,14 +7,13 @@ from PIL import Image
 
 
 class Post:
-    def __init__(self, title: str, id: str, url: str, image_url: str, author: str, nsfw: bool, date: datetime):
+    def __init__(self, title: str, id: str, url: str, image_url: str, author: str, date: datetime):
         self.title = title
         self.id = id
         self.url = url
         self.image_url = image_url
         self.image_size = self.get_image_size()
         self.author = author
-        self.nsfw = nsfw
         self.date = date
         self.optimize()
 
@@ -53,7 +52,7 @@ class Post:
         new_image.save(image_bytes, format=filetype)
         image_bytes.getvalue()
 
-        url = 'https://api.imgur.com/3/image'
+        url = 'https://api.imgur.com/3/image'  # Imgur API endpoint
         with open('imgur', 'r') as file:
             imgur_client_id = file.read()
 
@@ -103,18 +102,30 @@ class Scraper:
     REQUEST_HANDLER = RequestHandler(BASE_URL)
 
     def get_post(self):
-        url = '/top.json?limit=1'
+        url = '/top.json?limit=100'
         response = self.REQUEST_HANDLER.get(url)
         data = json.loads(response.text)
-        post = data['data']['children'][0]['data']
-        title = post['title']
-        id = post['id']
-        url = f'https://redd.it/{id}'
-        image_url = post['url']
-        author = post['author']
-        nsfw = post['over_18']
-        date = datetime.fromtimestamp(post['created_utc'])
-        return Post(title, id, url, image_url, author, nsfw, date)
+        # Create a file to store ids of posts that have already been returned
+        with open('posts', 'a+') as file:
+            file.write('')
 
+        with open('posts', 'r') as file:
+            posts = file.read().split('\n')
 
-print(Scraper().get_post())
+        for post in data['data']['children']:
+            post = post['data']
+            title = post['title']
+            id = post['id']
+            url = f'https://redd.it/{id}'
+            image_url = post['url']
+            author = post['author']
+            date = datetime.fromtimestamp(post['created_utc'])
+            nsfw = post['over_18']
+            video = post['is_video']
+            if nsfw or video or id in posts:
+                continue
+            # Append the id to the file so that it won't be returned again
+            with open('posts', 'a') as file:
+                file.write(id + '\n')
+            # Return the post
+            return Post(title, id, url, image_url, author, date)
