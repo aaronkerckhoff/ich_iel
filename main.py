@@ -214,6 +214,11 @@ class Instagram:
                 self.access_token = response['access_token']
                 self.access_token_expires = int(time.time()) + response['expires_in']
 
+        # Update file
+        content[3] = self.access_token
+        with open('instagram', 'w') as file:
+            file.write('\n'.join(content))
+
         if self.access_token_expires - int(time.time()) < (60 * 60 * 24 * 7):  # If the access token is about to expire in less than 1 week
             print('Your access token is about to expire!')
             print('Please update your access token as soon as possible.')
