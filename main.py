@@ -1,10 +1,14 @@
 import base64
+import random
 import requests
 import json
 import time
+import schedule
 from datetime import datetime
 from io import BytesIO
 from PIL import Image
+
+global scraper, instagram
 
 
 class Post:
@@ -104,6 +108,7 @@ class Scraper:
     REQUEST_HANDLER = RequestHandler(BASE_URL)
 
     def get_post(self):
+        print('Scraping post from Reddit...')
         url = '/top.json?limit=100'
         response = self.REQUEST_HANDLER.get(url)
         data = json.loads(response.text)
@@ -136,7 +141,7 @@ class Scraper:
 
 class Instagram:
     def __init__(self):
-        self.access_token = input('Enter your access token: ')
+        self.access_token = None
         self.access_token_expires = None
         self.client_id = None
         self.client_secret = None
@@ -146,18 +151,12 @@ class Instagram:
         self.setup()
 
     def setup(self):
-        with open('instagram', 'r') as file:
-            content = file.read().split('\n')
-            self.facebook_page_id = content[0]
-            self.client_id = content[1]
-            self.client_secret = content[2]
+        self.check_credentials()
 
-        # Get long-lived access token
-        print('Getting long-lived access token...')
-        params = {'grant_type': 'fb_exchange_token', 'client_id': self.client_id, 'client_secret': self.client_secret, 'fb_exchange_token': self.access_token}
-        response = self.facebook_request_handler.get('/oauth/access_token', params=params).json()
-        self.access_token = response['access_token']
-        self.access_token_expires = int(time.time()) + response['expires_in']
+        # Notify if the access token is about to expire in less than 1 week
+        if self.access_token_expires - int(time.time()) < (60 * 60 * 24 * 7):
+            print('Your access token is about to expire!')
+            print('Please update your access token as soon as possible.')
 
         # Get instagram page ID
         print('Getting instagram page ID...')
@@ -166,25 +165,91 @@ class Instagram:
         self.page_id = response['instagram_business_account']['id']
 
     def post_image(self, post: Post):
+        # Check credentials
+        self.check_credentials()
+
+        # Generate caption
+        caption = f'{post.title}\n\n'
+        # Add random hashtags to the caption
+        with open('hashtags', 'r') as file:
+            hashtags = file.read().split('\n')
+        for i in range(10):
+            hashtag = random.choice(hashtags)
+            hashtags.remove(hashtag)
+            caption += f'#{hashtag} '
+
         # Create media container
-        params = {'access_token': self.access_token, 'image_url': post.image_url, 'caption': post.title}
+        params = {'access_token': self.access_token, 'image_url': post.image_url, 'caption': caption}
         response = self.facebook_request_handler.post(f'/{self.page_id}/media', params=params).json()
         media_id = response['id']
+        print(f'Created media container with ID {media_id}')
 
         # Publish media container
         params = {'access_token': self.access_token, 'creation_id': media_id}
         response = self.facebook_request_handler.post(f'/{self.page_id}/media_publish', params=params).json()
         post_id = response['id']
+        print(f'Published media container as post with ID {post_id}')
 
         # Add comment with post information
         comment = f'🔥 {post.ups} Hochwählis\n📸 Pfosten von u/{post.author}\n🔗 Verknüpfung im Internetz unter {post.url.replace("https://", "")}'
         params = {'access_token': self.access_token, 'message': comment}
         response = self.facebook_request_handler.post(f'/{post_id}/comments', params=params).json()
+        comment_id = response['id']
+        print(f'Added comment with ID {comment_id}')
+
+        print('\nWaiting for next post...\n')
+
+    def check_credentials(self):
+        with open('instagram', 'r') as file:  # Load the access token from the file
+            content = file.read().split('\n')
+            self.facebook_page_id = content[0]
+            self.client_id = content[1]
+            self.client_secret = content[2]
+            if self.access_token is not content[3]:  # If the access token differs from the one in the file, update it
+                self.access_token = content[3]
+                print('Getting long-lived access token...')
+                params = {'grant_type': 'fb_exchange_token', 'client_id': self.client_id,
+                          'client_secret': self.client_secret, 'fb_exchange_token': self.access_token}
+                response = self.facebook_request_handler.get('/oauth/access_token', params=params).json()
+                self.access_token = response['access_token']
+                self.access_token_expires = int(time.time()) + response['expires_in']
+
+        if self.access_token_expires - int(time.time()) < (60 * 60 * 24 * 7):  # If the access token is about to expire in less than 1 week
+            print('Your access token is about to expire!')
+            print('Please update your access token as soon as possible.')
+
+
+def post_image(posts: int = 1):
+    for i in range(posts):
+        instagram.post_image(scraper.get_post())
 
 
 def main():
+    global scraper, instagram
+    scraper = Scraper()
     instagram = Instagram()
-    instagram.post_image(Scraper().get_post())
+
+    schedule.every().day.at('11:00').do(lambda: post_image(1))  # 1 total post
+    schedule.every().day.at('12:00').do(lambda: post_image(1))  # 2 total posts
+    schedule.every().day.at('13:00').do(lambda: post_image(2))  # 4 total posts
+    schedule.every().day.at('13:30').do(lambda: post_image(2))  # 6 total posts
+    schedule.every().day.at('14:00').do(lambda: post_image(2))  # 8 total posts
+    schedule.every().day.at('14:30').do(lambda: post_image(2))  # 10 total posts
+    schedule.every().day.at('15:00').do(lambda: post_image(2))  # 12 total posts
+    schedule.every().day.at('15:30').do(lambda: post_image(2))  # 14 total posts
+    schedule.every().day.at('16:00').do(lambda: post_image(1))  # 16 total posts
+    schedule.every().day.at('16:30').do(lambda: post_image(1))  # 17 total posts
+    schedule.every().day.at('17:00').do(lambda: post_image(1))  # 18 total posts
+    schedule.every().day.at('17:30').do(lambda: post_image(1))  # 19 total posts
+    schedule.every().day.at('18:00').do(lambda: post_image(1))  # 20 total posts
+    schedule.every().day.at('19:00').do(lambda: post_image(1))  # 21 total posts
+    schedule.every().day.at('20:00').do(lambda: post_image(1))  # 22 total posts
+    schedule.every().day.at('21:00').do(lambda: post_image(1))  # 23 total posts
+    schedule.every().day.at('22:00').do(lambda: post_image(1))  # 24 total posts
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 
 
 if __name__ == '__main__':
