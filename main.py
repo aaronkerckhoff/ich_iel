@@ -1,19 +1,21 @@
 import base64
 import requests
 import json
+import time
 from datetime import datetime
 from io import BytesIO
 from PIL import Image
 
 
 class Post:
-    def __init__(self, title: str, id: str, url: str, image_url: str, author: str, date: datetime):
+    def __init__(self, title: str, id: str, url: str, image_url: str, author: str, ups: int, date: datetime):
         self.title = title
         self.id = id
         self.url = url
         self.image_url = image_url
         self.image_size = self.get_image_size()
         self.author = author
+        self.ups = ups
         self.date = date
         self.optimize()
 
@@ -91,7 +93,7 @@ class RequestHandler:
         headers['User-Agent'] = useragent
         return requests.get(f'{self.url}{path}', params=params, headers=headers)
 
-    def post(self, path: str, params: dict, headers: dict, data: dict, useragent: dict = USER_AGENT):
+    def post(self, path: str = "", params: dict = None, headers: dict = None, data: dict = None, useragent: dict = USER_AGENT):
         headers = headers if headers else {}
         headers['User-Agent'] = useragent
         return requests.post(f'{self.url}{path}', params=params, headers=headers, data=data)
@@ -119,6 +121,7 @@ class Scraper:
             url = f'https://redd.it/{id}'
             image_url = post['url']
             author = post['author']
+            ups = post['ups']
             date = datetime.fromtimestamp(post['created_utc'])
             nsfw = post['over_18']
             video = post['is_video']
@@ -128,4 +131,61 @@ class Scraper:
             with open('posts', 'a') as file:
                 file.write(id + '\n')
             # Return the post
-            return Post(title, id, url, image_url, author, date)
+            return Post(title, id, url, image_url, author, ups, date)
+
+
+class Instagram:
+    def __init__(self):
+        self.access_token = input('Enter your access token: ')
+        self.access_token_expires = None
+        self.client_id = None
+        self.client_secret = None
+        self.facebook_page_id = None
+        self.page_id = None
+        self.facebook_request_handler = RequestHandler('https://graph.facebook.com/v14.0')
+        self.setup()
+
+    def setup(self):
+        with open('instagram', 'r') as file:
+            content = file.read().split('\n')
+            self.facebook_page_id = content[0]
+            self.client_id = content[1]
+            self.client_secret = content[2]
+
+        # Get long-lived access token
+        print('Getting long-lived access token...')
+        params = {'grant_type': 'fb_exchange_token', 'client_id': self.client_id, 'client_secret': self.client_secret, 'fb_exchange_token': self.access_token}
+        response = self.facebook_request_handler.get('/oauth/access_token', params=params).json()
+        self.access_token = response['access_token']
+        self.access_token_expires = int(time.time()) + response['expires_in']
+
+        # Get instagram page ID
+        print('Getting instagram page ID...')
+        params = {'access_token': self.access_token, 'fields': 'instagram_business_account'}
+        response = self.facebook_request_handler.get(f'/{self.facebook_page_id}', params=params).json()
+        self.page_id = response['instagram_business_account']['id']
+
+    def post_image(self, post: Post):
+        # Create media container
+        params = {'access_token': self.access_token, 'image_url': post.image_url, 'caption': post.title}
+        response = self.facebook_request_handler.post(f'/{self.page_id}/media', params=params).json()
+        media_id = response['id']
+
+        # Publish media container
+        params = {'access_token': self.access_token, 'creation_id': media_id}
+        response = self.facebook_request_handler.post(f'/{self.page_id}/media_publish', params=params).json()
+        post_id = response['id']
+
+        # Add comment with post information
+        comment = f'🔥 {post.ups} Hochwählis\n📸 Pfosten von u/{post.author}\n🔗 Verknüpfung im Internetz unter {post.url.replace("https://", "")}'
+        params = {'access_token': self.access_token, 'message': comment}
+        response = self.facebook_request_handler.post(f'/{post_id}/comments', params=params).json()
+
+
+def main():
+    instagram = Instagram()
+    instagram.post_image(Scraper().get_post())
+
+
+if __name__ == '__main__':
+    main()
