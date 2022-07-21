@@ -108,35 +108,39 @@ class Scraper:
     REQUEST_HANDLER = RequestHandler(BASE_URL)
 
     def get_post(self):
-        print('Scraping post from Reddit...')
-        url = '/top.json?limit=100'
-        response = self.REQUEST_HANDLER.get(url)
-        data = json.loads(response.text)
-        # Create a file to store ids of posts that have already been returned
-        with open('posts', 'a+') as file:
-            file.write('')
+        try:
+            print('Scraping post from Reddit...')
+            url = '/top.json?limit=100'
+            response = self.REQUEST_HANDLER.get(url)
+            data = json.loads(response.text)
+            # Create a file to store ids of posts that have already been returned
+            with open('posts', 'a+') as file:
+                file.write('')
 
-        with open('posts', 'r') as file:
-            posts = file.read().split('\n')
+            with open('posts', 'r') as file:
+                posts = file.read().split('\n')
 
-        for post in data['data']['children']:
-            post = post['data']
-            title = post['title']
-            id = post['id']
-            url = f'https://redd.it/{id}'
-            image_url = post['url']
-            author = post['author']
-            ups = post['ups']
-            date = datetime.fromtimestamp(post['created_utc'])
-            nsfw = post['over_18']
-            video = post['is_video']
-            if nsfw or video or id in posts:
-                continue
-            # Append the id to the file so that it won't be returned again
-            with open('posts', 'a') as file:
-                file.write(id + '\n')
-            # Return the post
-            return Post(title, id, url, image_url, author, ups, date)
+            for post in data['data']['children']:
+                post = post['data']
+                title = post['title']
+                id = post['id']
+                url = f'https://redd.it/{id}'
+                image_url = post['url']
+                author = post['author']
+                ups = post['ups']
+                date = datetime.fromtimestamp(post['created_utc'])
+                nsfw = post['over_18']
+                video = post['is_video']
+                if nsfw or video or id in posts:
+                    continue
+                # Append the id to the file so that it won't be returned again
+                with open('posts', 'a') as file:
+                    file.write(id + '\n')
+                # Return the post
+                return Post(title, id, url, image_url, author, ups, date)
+        except Exception as e:
+            print(e)
+            return None
 
 
 class Instagram:
@@ -169,33 +173,36 @@ class Instagram:
         self.check_credentials()
 
         # Generate caption
-        caption = f'{post.title}\n\n'
-        # Add random hashtags to the caption
-        with open('hashtags', 'r') as file:
-            hashtags = file.read().split('\n')
-        for i in range(10):
-            hashtag = random.choice(hashtags)
-            hashtags.remove(hashtag)
-            caption += f'#{hashtag} '
+        try:
+            caption = f'{post.title}\n\n'
+            # Add random hashtags to the caption
+            with open('hashtags', 'r') as file:
+                hashtags = file.read().split('\n')
+            for i in range(10):
+                hashtag = random.choice(hashtags)
+                hashtags.remove(hashtag)
+                caption += f'#{hashtag} '
 
-        # Create media container
-        params = {'access_token': self.access_token, 'image_url': post.image_url, 'caption': caption}
-        response = self.facebook_request_handler.post(f'/{self.page_id}/media', params=params).json()
-        media_id = response['id']
-        print(f'Created media container with ID {media_id}')
+            # Create media container
+            params = {'access_token': self.access_token, 'image_url': post.image_url, 'caption': caption}
+            response = self.facebook_request_handler.post(f'/{self.page_id}/media', params=params).json()
+            media_id = response['id']
+            print(f'Created media container with ID {media_id}')
 
-        # Publish media container
-        params = {'access_token': self.access_token, 'creation_id': media_id}
-        response = self.facebook_request_handler.post(f'/{self.page_id}/media_publish', params=params).json()
-        post_id = response['id']
-        print(f'Published media container as post with ID {post_id}')
+            # Publish media container
+            params = {'access_token': self.access_token, 'creation_id': media_id}
+            response = self.facebook_request_handler.post(f'/{self.page_id}/media_publish', params=params).json()
+            post_id = response['id']
+            print(f'Published media container as post with ID {post_id}')
 
-        # Add comment with post information
-        comment = f'🔥 {post.ups} Hochwählis\n📸 Pfosten von u/{post.author}\n🔗 Verknüpfung im Internetz unter {post.url.replace("https://", "")}'
-        params = {'access_token': self.access_token, 'message': comment}
-        response = self.facebook_request_handler.post(f'/{post_id}/comments', params=params).json()
-        comment_id = response['id']
-        print(f'Added comment with ID {comment_id}')
+            # Add comment with post information
+            comment = f'🔥 {post.ups} Hochwählis\n📸 Pfosten von u/{post.author}\n🔗 Verknüpfung im Internetz unter {post.url.replace("https://", "")}'
+            params = {'access_token': self.access_token, 'message': comment}
+            response = self.facebook_request_handler.post(f'/{post_id}/comments', params=params).json()
+            comment_id = response['id']
+            print(f'Added comment with ID {comment_id}')
+        except Exception as e:
+            print(e)
 
         print('\nWaiting for next post...\n')
 
