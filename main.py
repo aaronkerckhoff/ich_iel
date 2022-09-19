@@ -1,14 +1,16 @@
 import base64
+import os
 import random
 import requests
 import json
 import time
 import schedule
+import logging, logging.config
 from datetime import datetime
 from io import BytesIO
 from PIL import Image
 
-global scraper, instagram
+global scraper, instagram, logger
 
 
 class Post:
@@ -28,6 +30,7 @@ class Post:
         file = BytesIO(requests.get(self.image_url).content)
         image = Image.open(file)
         width, height = image.size
+        logger.info('Image size: ' + str(width) + 'x' + str(height))
         return width, height
 
     # Returns true if the aspect ratio of the image is accepted by Instagram
@@ -38,6 +41,7 @@ class Post:
         if 0.8 <= aspect_ratio <= 1.9:
             return True
         else:
+            logger.info('Aspect ratio not accepted: ' + str(aspect_ratio))
             if aspect_ratio < 0.8:
                 return self.calculate_size(0.9)
             else:
@@ -45,6 +49,7 @@ class Post:
 
     # Optimizes the image by resizing it to the correct aspect ratio
     def change_image_size(self, size: tuple):
+        logger.info('Resizing image to: ' + str(size))
         image = Image.open(BytesIO(requests.get(self.image_url).content))
 
         new_image = Image.new('RGB', (round(size[0]), round(size[1])), (255, 255, 255))  # Create a new white image with the correct size
@@ -68,6 +73,7 @@ class Post:
 
         # Get the link of the optimized image
         self.image_url = json.loads(response.text)['data']['link']
+        logger.info('Optimized image: ' + self.image_url)
 
     # Calculates the needed size of the image given the aspect ratio
     def calculate_size(self, aspect_ratio: float):
@@ -109,7 +115,7 @@ class Scraper:
 
     def get_post(self):
         try:
-            print('Scraping post from Reddit...')
+            logger.info('Scraping post from Reddit...')
             url = '/top.json?limit=100'
             response = self.REQUEST_HANDLER.get(url)
             data = json.loads(response.text)
@@ -137,9 +143,11 @@ class Scraper:
                 with open('posts', 'a') as file:
                     file.write(id + '\n')
                 # Return the post
+                logger.info('Post scraped, id: ' + id)
                 return Post(title, id, url, image_url, author, ups, date)
         except Exception as e:
-            print(e)
+            logger.exception('Error while scraping post from Reddit')
+            logger.exception(e)
             return None
 
 
@@ -155,18 +163,15 @@ class Instagram:
         self.setup()
 
     def setup(self):
+        logger.info('Setting up instagram handler...')
         self.check_credentials()
 
-        # Notify if the access token is about to expire in less than 1 week
-        if self.access_token_expires - int(time.time()) < (60 * 60 * 24 * 7):
-            print('Your access token is about to expire!')
-            print('Please update your access token as soon as possible.')
-
         # Get instagram page ID
-        print('Getting instagram page ID...')
+        logger.info('Getting instagram page ID...')
         params = {'access_token': self.access_token, 'fields': 'instagram_business_account'}
         response = self.facebook_request_handler.get(f'/{self.facebook_page_id}', params=params).json()
         self.page_id = response['instagram_business_account']['id']
+        logger.info(f'Instagram page ID: {self.page_id}')
 
     def post_image(self, post: Post):
         # Check credentials
@@ -182,29 +187,31 @@ class Instagram:
                 hashtag = random.choice(hashtags)
                 hashtags.remove(hashtag)
                 caption += f'#{hashtag} '
+            logger.info(f'Generated caption: {caption}')
 
             # Create media container
             params = {'access_token': self.access_token, 'image_url': post.image_url, 'caption': caption}
             response = self.facebook_request_handler.post(f'/{self.page_id}/media', params=params).json()
             media_id = response['id']
-            print(f'Created media container with ID {media_id}')
+            logger.info(f'Created media container with ID {media_id}')
 
             # Publish media container
             params = {'access_token': self.access_token, 'creation_id': media_id}
             response = self.facebook_request_handler.post(f'/{self.page_id}/media_publish', params=params).json()
             post_id = response['id']
-            print(f'Published media container as post with ID {post_id}')
+            logger.info(f'Published media container as post with ID {post_id}')
 
             # Add comment with post information
             comment = f'🔥 {post.ups} Hochwählis\n📸 Pfosten von u/{post.author}\n🔗 Verknüpfung im Internetz unter {post.url.replace("https://", "")}'
             params = {'access_token': self.access_token, 'message': comment}
             response = self.facebook_request_handler.post(f'/{post_id}/comments', params=params).json()
             comment_id = response['id']
-            print(f'Added comment with ID {comment_id}')
+            logger.info(f'Added comment with ID {comment_id}')
         except Exception as e:
-            print(e)
+            logger.exception('Failed to post image')
+            logger.exception(e)
 
-        print('\nWaiting for next post...\n')
+        logger.info('\nWaiting for next post...\n')
 
     def check_credentials(self):
         with open('instagram', 'r') as file:  # Load the access token from the file
@@ -214,12 +221,17 @@ class Instagram:
             self.client_secret = content[2]
             if self.access_token is not content[3]:  # If the access token differs from the one in the file, update it
                 self.access_token = content[3]
-                print('Getting long-lived access token...')
+                logger.info('Getting long-lived access token...')
                 params = {'grant_type': 'fb_exchange_token', 'client_id': self.client_id,
                           'client_secret': self.client_secret, 'fb_exchange_token': self.access_token}
                 response = self.facebook_request_handler.get('/oauth/access_token', params=params).json()
-                self.access_token = response['access_token']
-                self.access_token_expires = int(time.time()) + response['expires_in']
+                try:
+                    self.access_token = response['access_token']
+                    self.access_token_expires = int(time.time()) + response['expires_in']
+                    logger.info('Successfully updated access token')
+                except KeyError:
+                    logger.exception('KeyError occurred while getting long-lived access token')
+                    logger.error(response)
 
         # Update file
         content[3] = self.access_token
@@ -227,17 +239,68 @@ class Instagram:
             file.write('\n'.join(content))
 
         if self.access_token_expires - int(time.time()) < (60 * 60 * 24 * 7):  # If the access token is about to expire in less than 1 week
-            print('Your access token is about to expire!')
-            print('Please update your access token as soon as possible.')
+            logger.warning('Your access token is about to expire!')
+            logger.warning('Please update your access token as soon as possible.')
 
 
 def post_image(posts: int = 1):
     for i in range(posts):
-        instagram.post_image(scraper.get_post())
+        post = scraper.get_post()
+        instagram.post_image(post)
+        logger.info(f'Posted image {post.title}, url: {post.url}, image: {post.image_url}, author: {post.author}, ups: {post.ups}, date: {post.date}')
+
+
+def initialize_logger():
+    global logger
+
+    current_time = datetime.now()
+
+    def create_directory(path: str):
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+    logging_config = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'default_formatter': {
+                'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            },
+        },
+        'handlers': {
+            'stream_handler': {
+                'class': 'logging.StreamHandler',
+                'formatter': 'default_formatter',
+            },
+            'file_handler': {
+                'class': 'logging.FileHandler',
+                'filename': f'logs/{current_time.strftime("%Y")}/{current_time.strftime("%B")}/{current_time.strftime("%d")}{current_time.strftime("%m")}{current_time.strftime("%Y")}.log',
+                'mode': 'a',
+                'formatter': 'default_formatter',
+            },
+        },
+        'loggers': {
+            'ich_iel': {
+                'handlers': ['stream_handler', 'file_handler'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+        },
+    }
+
+    create_directory(f'logs/{current_time.strftime("%Y")}/{current_time.strftime("%B")}')
+
+    logging.config.dictConfig(logging_config)
+    logger = logging.getLogger('ich_iel')
+    logger.info('Logger initialized')
 
 
 def main():
     global scraper, instagram
+
+    initialize_logger()
+    logger.info('Starting ich_iel...')
+
     scraper = Scraper()
     instagram = Instagram()
 
@@ -258,6 +321,10 @@ def main():
     schedule.every().day.at('20:00').do(lambda: post_image(1))  # 22 total posts
     schedule.every().day.at('21:00').do(lambda: post_image(1))  # 23 total posts
     schedule.every().day.at('22:00').do(lambda: post_image(1))  # 24 total posts
+    logger.info('Scheduled posting times')
+
+    # Create new log file on every new day
+    schedule.every().day.at('00:00').do(lambda: initialize_logger())
 
     while True:
         schedule.run_pending()
