@@ -5,7 +5,8 @@ import requests
 import json
 import time
 import schedule
-import logging, logging.config
+import logging
+import logging.config
 from datetime import datetime
 from io import BytesIO
 from PIL import Image
@@ -178,6 +179,7 @@ class Instagram:
         self.check_credentials()
 
         # Generate caption
+        response = None
         try:
             caption = f'{post.title}\n\n'
             # Add random hashtags to the caption
@@ -210,6 +212,8 @@ class Instagram:
         except Exception as e:
             logger.exception('Failed to post image')
             logger.exception(e)
+            if response:
+                logger.error(response)
 
         logger.info('\nWaiting for next post...\n')
 
