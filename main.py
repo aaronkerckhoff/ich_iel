@@ -164,15 +164,21 @@ class Instagram:
         self.setup()
 
     def setup(self):
-        logger.info('Setting up instagram handler...')
-        self.check_credentials()
+        response = None
+        try:
+            logger.info('Setting up instagram handler...')
+            self.check_credentials()
 
-        # Get instagram page ID
-        logger.info('Getting instagram page ID...')
-        params = {'access_token': self.access_token, 'fields': 'instagram_business_account'}
-        response = self.facebook_request_handler.get(f'/{self.facebook_page_id}', params=params).json()
-        self.page_id = response['instagram_business_account']['id']
-        logger.info(f'Instagram page ID: {self.page_id}')
+            # Get instagram page ID
+            logger.info('Getting instagram page ID...')
+            params = {'access_token': self.access_token, 'fields': 'instagram_business_account'}
+            response = self.facebook_request_handler.get(f'/{self.facebook_page_id}', params=params).json()
+            self.page_id = response['instagram_business_account']['id']
+            logger.info(f'Instagram page ID: {self.page_id}')
+        except Exception as e:
+            logger.exception('Error while setting up instagram handler')
+            logger.exception(e)
+            logger.exception(response)
 
     def post_image(self, post: Post):
         # Check credentials
@@ -213,7 +219,7 @@ class Instagram:
             logger.exception('Failed to post image')
             logger.exception(e)
             if response:
-                logger.error(response)
+                logger.exception(response)
 
         logger.info('\nWaiting for next post...\n')
 
