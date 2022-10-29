@@ -1,0 +1,9 @@
+name: Generate requirements.txt
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - name: Automatic requirements.txt
+        uses: ryan-rozario/pipreqs-action@v2.0.0
